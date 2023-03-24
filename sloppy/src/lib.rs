@@ -1,4 +1,5 @@
-use libc::{c_int, dlsym, sockaddr, socklen_t, RTLD_NEXT};
+use libc::{c_int, dlsym, sendto, sockaddr, socklen_t, AF_UNIX, RTLD_NEXT, SO_TYPE};
+use nix::sys::socket::{AddressFamily, SockaddrLike};
 use once_cell::sync::Lazy;
 use os_socketaddr::OsSocketAddr;
 use std::{collections::HashSet, ffi::CString, os::unix::prelude::AsRawFd, sync::RwLock};
@@ -25,8 +26,9 @@ struct SockFns {
     recvmsg: read::RecvmsgFn,
     write: write::WriteFn,
     send: write::SendFn,
-    sendmsg: write::SendmsgFn,
     sendto: write::SendtoFn,
+    sendmmsg: write::SendmmsgFn,
+    sendmsg: write::SendmsgFn,
 }
 
 impl SockFns {
@@ -102,6 +104,13 @@ impl SockFns {
         }
         let sendto_ptr: write::SendtoFn = std::mem::transmute(sendto_str);
 
+        let sendmmsg_str = CString::new("sendmmsg").unwrap();
+        let sendmmsg_str = dlsym(RTLD_NEXT, sendmmsg_str.as_ptr());
+        if sendmmsg_str.is_null() {
+            return Err(());
+        }
+        let sendmmsg_ptr: write::SendmmsgFn = std::mem::transmute(sendmmsg_str);
+
         Ok(SockFns {
             connect: connect_ptr,
             read: read_ptr,
@@ -112,6 +121,7 @@ impl SockFns {
             write: write_ptr,
             send: send_ptr,
             sendmsg: sendmsg_ptr,
+            sendmmsg: sendmmsg_ptr,
             sendto: sendto_ptr,
         })
     }
@@ -148,18 +158,29 @@ pub unsafe extern "C" fn connect(
     }
 }
 
-// WARNING avoid implicit "write" calls in all overriden fns (like //print! macro)
+// WARNING avoid implicit "write" calls in all overriden fns (like print! macro)
 
 fn is_network_socket<F: AsRawFd>(fd: &F) -> bool {
     let mut stat: libc::stat = unsafe { std::mem::zeroed() };
     if unsafe { libc::fstat(fd.as_raw_fd(), &mut stat) } == 0 {
-        print!(
-            "(fd: {}, mode: {:#05x}_____)",
-            fd.as_raw_fd(),
-            stat.st_mode & libc::S_IFMT
-        );
+        //print!(
+        //    "(fd: {}, mode: {:#05x}_____)",
+        //    fd.as_raw_fd(),
+        //    stat.st_mode & libc::S_IFMT
+        //);
         return stat.st_mode & libc::S_IFMT == libc::S_IFSOCK;
     }
 
     false
+}
+
+fn is_unix_socket<F: AsRawFd>(fd: &F) -> bool {
+    let addr: nix::sys::socket::SockaddrStorage =
+        nix::sys::socket::getsockname(fd.as_raw_fd()).unwrap();
+
+    let fam = addr.family().unwrap();
+
+    println!("NETFAM {:#?} FOR FD {}////", fam, fd.as_raw_fd());
+
+    fam == AddressFamily::Unix
 }
