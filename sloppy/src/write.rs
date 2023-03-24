@@ -29,17 +29,14 @@ pub type SendtoFn = unsafe extern "C" fn(
     addrlen: socklen_t,
 ) -> ssize_t;
 
-const TTS: time::Duration = time::Duration::from_millis(500);
+const TTS: time::Duration = time::Duration::from_millis(crate::TTS_MILLIS);
 
 // overriden funcs
-
-// TODO seems like is_network_socket causes errors when using send* functions
 
 #[no_mangle]
 unsafe extern "C" fn write(fd: c_int, buf: *const c_void, count: size_t) -> ssize_t {
     if !(0..3).contains(&fd) {
-        // crate::is_unix_socket(&fd);
-        if crate::is_network_socket(&fd) && !crate::is_unix_socket(&fd) {
+        if crate::is_network_socket(&fd) && !crate::is_irrelevant_sock_fam(&fd) {
             // print!("slow write");
             std::thread::sleep(TTS);
         }
@@ -50,8 +47,7 @@ unsafe extern "C" fn write(fd: c_int, buf: *const c_void, count: size_t) -> ssiz
 #[no_mangle]
 unsafe extern "C" fn send(socket: c_int, buf: *const c_void, len: size_t, flags: c_int) -> ssize_t {
     if !(0..3).contains(&socket) {
-        // crate::is_unix_socket(&socket);
-        if crate::is_network_socket(&socket) && !crate::is_unix_socket(&socket) {
+        if crate::is_network_socket(&socket) && !crate::is_irrelevant_sock_fam(&socket) {
             ////print!("slow write");
             std::thread::sleep(TTS);
         }
@@ -62,8 +58,7 @@ unsafe extern "C" fn send(socket: c_int, buf: *const c_void, len: size_t, flags:
 #[no_mangle]
 unsafe extern "C" fn sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t {
     if !(0..3).contains(&fd) {
-        // crate::is_unix_socket(&fd);
-        if crate::is_network_socket(&fd) && !crate::is_unix_socket(&fd) {
+        if crate::is_network_socket(&fd) && !crate::is_irrelevant_sock_fam(&fd) {
             ////print!("slow write");
             std::thread::sleep(TTS);
         }
@@ -81,8 +76,7 @@ unsafe extern "C" fn sendto(
     addrlen: socklen_t,
 ) -> ssize_t {
     if !(0..3).contains(&socket) {
-        // crate::is_unix_socket(&socket);
-        if crate::is_network_socket(&socket) && !crate::is_unix_socket(&socket) {
+        if crate::is_network_socket(&socket) && !crate::is_irrelevant_sock_fam(&socket) {
             ////print!("slow write");
             std::thread::sleep(TTS);
         }
@@ -99,8 +93,7 @@ unsafe extern "C" fn sendmmsg(
 ) -> ssize_t {
     println!("AYO");
     if !(0..3).contains(&sockfd) {
-        // crate::is_unix_socket(&sockfd);
-        if crate::is_network_socket(&sockfd) && !crate::is_unix_socket(&sockfd) {
+        if crate::is_network_socket(&sockfd) && !crate::is_irrelevant_sock_fam(&sockfd) {
             ////print!("slow write");
             std::thread::sleep(TTS);
         }
