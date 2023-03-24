@@ -11,7 +11,7 @@ static fns: Lazy<SockFns> = unsafe {
     Lazy::new(|| SockFns::new_from_first_symbol().expect("cannot get socket functions symbols"))
 };
 
-static unix_sock_fd_map: Lazy<RwLock<HashSet<c_int>>> = Lazy::new(|| RwLock::new(HashSet::new()));
+const TTS_MILLIS: u64 = 50;
 
 type ConnectFn =
     unsafe extern "C" fn(socket: c_int, address: *const sockaddr, address_len: socklen_t) -> c_int;
@@ -133,54 +133,36 @@ pub unsafe extern "C" fn connect(
     address: *const sockaddr,
     address_len: socklen_t,
 ) -> c_int {
-    if address.is_null() {
-        panic!("address is null");
-    }
-
-    let addr = OsSocketAddr::copy_from_raw(address, address_len).into_addr();
-
-    if let Some(addr) = addr {
-        if !addr.ip().is_loopback() {
-            //print!("slow conn");
-            //std::thread::sleep(ttw);
-        }
-
-        return (fns.connect)(socket, address, address_len);
-    } else {
-        //print!("unix conn");
-        if let Ok(mut w) = unix_sock_fd_map.write() {
-            w.insert(socket);
-        } else {
-            //print!("poisoned");
-        }
-
-        return (fns.connect)(socket, address, address_len);
-    }
+    return (fns.connect)(socket, address, address_len);
 }
 
 // WARNING avoid implicit "write" calls in all overriden fns (like print! macro)
 
 fn is_network_socket<F: AsRawFd>(fd: &F) -> bool {
-    let mut stat: libc::stat = unsafe { std::mem::zeroed() };
-    if unsafe { libc::fstat(fd.as_raw_fd(), &mut stat) } == 0 {
-        //print!(
-        //    "(fd: {}, mode: {:#05x}_____)",
-        //    fd.as_raw_fd(),
-        //    stat.st_mode & libc::S_IFMT
-        //);
-        return stat.st_mode & libc::S_IFMT == libc::S_IFSOCK;
-    }
-
-    false
+    let ret = match nix::sys::stat::fstat(fd.as_raw_fd()) {
+        Ok(s) => s,
+        _ => return false,
+    };
+    ret.st_mode & libc::S_IFMT == libc::S_IFSOCK
 }
 
-fn is_unix_socket<F: AsRawFd>(fd: &F) -> bool {
+fn is_irrelevant_sock_fam<F: AsRawFd>(fd: &F) -> bool {
     let addr: nix::sys::socket::SockaddrStorage =
-        nix::sys::socket::getsockname(fd.as_raw_fd()).unwrap();
+        match nix::sys::socket::getsockname(fd.as_raw_fd()) {
+            Ok(a) => a,
+            _ => return false,
+        };
 
-    let fam = addr.family().unwrap();
+    let fam = match addr.family() {
+        Some(f) => f,
+        _ => return false,
+    };
 
-    println!("NETFAM {:#?} FOR FD {}////", fam, fd.as_raw_fd());
+    //println!("NETFAM {:#?} FOR FD {}////", fam, fd.as_raw_fd());
 
-    fam == AddressFamily::Unix
+    fam == AddressFamily::Unix || fam == AddressFamily::Netlink || fam == AddressFamily::Unspec
 }
+
+//fn is_local_address<F: AsRawFd>(fd: &F) -> bool {
+//
+//}
