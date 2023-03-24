@@ -27,18 +27,16 @@ pub type RecvmmsgFn = unsafe extern "C" fn(
 
 pub type RecvmsgFn = unsafe extern "C" fn(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t;
 
-const TTS: time::Duration = time::Duration::from_millis(50);
+const TTS: time::Duration = time::Duration::from_millis(500);
 
 // overriden funcs
 
 #[no_mangle]
 pub unsafe extern "C" fn read(fd: c_int, buf: *mut c_void, count: size_t) -> ssize_t {
-    if let Ok(not_ok_fds) = crate::unix_sock_fd_map.read() {
-        if crate::is_network_socket(&fd) {
-            //print!("slow read");
-            std::thread::sleep(TTS);
-        }
-    }
+    //if crate::is_network_socket(&fd) && !crate::is_unix_socket(&fd) {
+    //    //print!("slow read");
+    //    std::thread::sleep(TTS);
+    //}
     (crate::fns.read)(fd, buf, count)
 }
 
@@ -49,12 +47,10 @@ pub unsafe extern "C" fn recv(
     len: size_t,
     flags: c_int,
 ) -> ssize_t {
-    if let Ok(not_ok_fds) = crate::unix_sock_fd_map.read() {
-        if crate::is_network_socket(&socket) {
-            //print!("slow read");
-            std::thread::sleep(TTS);
-        }
-    }
+    //if crate::is_network_socket(&socket) && !crate::is_unix_socket(&socket) {
+    //    //print!("slow read");
+    //    std::thread::sleep(TTS);
+    //}
     (crate::fns.recv)(socket, buf, len, flags)
 }
 
@@ -67,12 +63,10 @@ pub unsafe extern "C" fn recvfrom(
     addr: *mut sockaddr,
     addrlen: *mut socklen_t,
 ) -> ssize_t {
-    if let Ok(not_ok_fds) = crate::unix_sock_fd_map.read() {
-        if crate::is_network_socket(&socket) {
-            //print!("slow read");
-            std::thread::sleep(TTS);
-        }
-    }
+    //if crate::is_network_socket(&socket) && !crate::is_unix_socket(&socket) {
+    //    //print!("slow read");
+    //    std::thread::sleep(TTS);
+    //}
     (crate::fns.recvfrom)(socket, buf, len, flags, addr, addrlen)
 }
 
@@ -84,22 +78,18 @@ pub unsafe extern "C" fn recvmmsg(
     flags: c_int,
     timeout: *mut timespec,
 ) -> c_int {
-    if let Ok(not_ok_fds) = crate::unix_sock_fd_map.read() {
-        if crate::is_network_socket(&sockfd) {
-            //print!("slow read");
-            std::thread::sleep(TTS);
-        }
-    }
+    //if crate::is_network_socket(&sockfd) && !crate::is_unix_socket(&sockfd) {
+    //    //print!("slow read");
+    //    std::thread::sleep(TTS);
+    //}
     (crate::fns.recvmmsg)(sockfd, msgvec, vlen, flags, timeout)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t {
-    if let Ok(not_ok_fds) = crate::unix_sock_fd_map.read() {
-        if crate::is_network_socket(&fd) {
-            //print!("slow read");
-            std::thread::sleep(TTS);
-        }
-    }
+    //if crate::is_network_socket(&fd) && !crate::is_unix_socket(&fd) {
+    //    //print!("slow read");
+    //    std::thread::sleep(TTS);
+    //}
     (crate::fns.recvmsg)(fd, msg, flags)
 }
