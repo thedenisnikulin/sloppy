@@ -33,7 +33,7 @@ const TTS: time::Duration = time::Duration::from_millis(crate::TTS_MILLIS);
 
 #[no_mangle]
 pub unsafe extern "C" fn read(fd: c_int, buf: *mut c_void, count: size_t) -> ssize_t {
-    if !(0..3).contains(&fd) {
+    if !(0..3).contains(&fd) && !crate::is_seccomp() {
         if crate::is_network_socket(&fd) && !crate::is_irrelevant_sock_fam(&fd) {
             std::thread::sleep(TTS);
         }

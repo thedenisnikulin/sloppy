@@ -1,3 +1,5 @@
+#![feature(c_variadic)]
+
 use libc::{c_int, dlsym, sendto, sockaddr, socklen_t, AF_UNIX, RTLD_NEXT, SO_TYPE};
 use nix::sys::socket::{AddressFamily, SockaddrLike};
 use once_cell::sync::Lazy;
@@ -13,9 +15,6 @@ static fns: Lazy<SockFns> = unsafe {
 
 const TTS_MILLIS: u64 = 50;
 
-type ConnectFn =
-    unsafe extern "C" fn(socket: c_int, address: *const sockaddr, address_len: socklen_t) -> c_int;
-
 // TODO move each fn to separate type with their own constructors
 struct SockFns {
     connect: ConnectFn,
@@ -29,6 +28,7 @@ struct SockFns {
     sendto: write::SendtoFn,
     sendmmsg: write::SendmmsgFn,
     sendmsg: write::SendmsgFn,
+    prctl: PrctlFn,
 }
 
 impl SockFns {
@@ -111,6 +111,13 @@ impl SockFns {
         }
         let sendmmsg_ptr: write::SendmmsgFn = std::mem::transmute(sendmmsg_str);
 
+        let prctl_str = CString::new("prctl").unwrap();
+        let prctl_ptr = dlsym(RTLD_NEXT, prctl_str.as_ptr());
+        if prctl_ptr.is_null() {
+            return Err(());
+        }
+        let prctl_ptr: PrctlFn = std::mem::transmute(prctl_ptr);
+
         Ok(SockFns {
             connect: connect_ptr,
             read: read_ptr,
@@ -123,9 +130,15 @@ impl SockFns {
             sendmsg: sendmsg_ptr,
             sendmmsg: sendmmsg_ptr,
             sendto: sendto_ptr,
+            prctl: prctl_ptr,
         })
     }
 }
+
+type ConnectFn =
+    unsafe extern "C" fn(socket: c_int, address: *const sockaddr, address_len: socklen_t) -> c_int;
+
+type PrctlFn = unsafe extern "C" fn(option: c_int, ...) -> c_int;
 
 #[no_mangle]
 pub unsafe extern "C" fn connect(
@@ -133,7 +146,13 @@ pub unsafe extern "C" fn connect(
     address: *const sockaddr,
     address_len: socklen_t,
 ) -> c_int {
-    return (fns.connect)(socket, address, address_len);
+    (fns.connect)(socket, address, address_len)
+}
+
+// this needs to be here because without it some programs that use seccomp will crash with "prctl() failure"
+#[no_mangle]
+pub unsafe extern "C" fn prctl(option: c_int, args: ...) -> c_int {
+    (fns.prctl)(option, args)
 }
 
 // WARNING avoid implicit "write" calls in all overriden fns (like print! macro)
@@ -163,6 +182,8 @@ fn is_irrelevant_sock_fam<F: AsRawFd>(fd: &F) -> bool {
     fam == AddressFamily::Unix || fam == AddressFamily::Netlink || fam == AddressFamily::Unspec
 }
 
-//fn is_local_address<F: AsRawFd>(fd: &F) -> bool {
-//
-//}
+// TODO STOPPED HERE
+fn is_seccomp() -> bool {
+    let mode = unsafe { libc::prctl(libc::PR_GET_SECCOMP) } as u32;
+    mode == libc::SECCOMP_MODE_STRICT || mode == libc::SECCOMP_MODE_FILTER
+}
